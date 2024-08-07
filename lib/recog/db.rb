@@ -1,21 +1,21 @@
 # frozen_string_literal: true
 
-module Recog
-  # A collection of {Fingerprint fingerprints} for matching against a particular
-  # kind of fingerprintable data, e.g. an HTTP `Server` header
+module Recog                                                                                                                                     
+  # A collection of {Fingerprint fingerprints} for matching against a particular                                                                 
+  # kind of fingerprintable data, e.g. an HTTP `Server` header                                                                                   
   class DB
     require 'nokogiri'
     require 'recog/fingerprint'
 
-    # @return [String]
-    attr_reader :path
+    # @return [Array<String>] List of file paths
+    attr_reader :paths
 
     # @return [Array<Fingerprint>] {Fingerprint} objects that can be matched
     #   against strings that make sense for the {#match_key}
     attr_reader :fingerprints
 
     # @return [String] Taken from the `fingerprints/matches` attribute, or
-    #   defaults to the basename of {#path} without the `.xml` extension.
+    #   defaults to the basename of {#paths} without the `.xml` extension.
     attr_reader :match_key
 
     # @return [String] Taken from the `fingerprints/protocol` attribute, or
@@ -36,13 +36,14 @@ module Recog
     # values in their own custom XML that will always run last.
     DEFAULT_FP_PREFERENCE = 0.10
 
-    # @param path [String]
-    def initialize(path)
+    # @param filenames [String, Array<String>] Single filename or list of filenames
+    def initialize(filenames)
       @match_key = nil
       @protocol = ''
       @database_type = ''
       @preference = DEFAULT_FP_PREFERENCE.to_f
-      @path = path
+      # Ensure filenames is an array
+      @paths = Array(filenames).map { |filename| "#{File.dirname(__FILE__)}/../../xml/#{filename}" }
       @fingerprints = []
 
       parse_fingerprints
@@ -50,29 +51,31 @@ module Recog
 
     # @return [void]
     def parse_fingerprints
-      xml = nil
+      @paths.each do |path|
+        xml = nil
 
-      File.open(path, 'rb') do |fd|
-        xml = Nokogiri::XML(fd.read(fd.stat.size))
+        File.open(path, 'rb') do |fd|
+          xml = Nokogiri::XML(fd.read(fd.stat.size))
+        end
+
+        raise "#{path} is invalid XML: #{xml.errors.join(',')}" unless xml.errors.empty?
+
+        xml.xpath('/fingerprints').each do |fbase|
+          @match_key ||= fbase['matches'].to_s if fbase['matches']
+          @protocol ||= fbase['protocol'].to_s if fbase['protocol']
+          @database_type ||= fbase['database_type'].to_s if fbase['database_type']
+          @preference = fbase['preference'].to_f if fbase['preference']
+        end
+
+        filepath = path.sub(/\.xml$/, '')
+        @match_key ||= File.basename(path).sub(/\.xml$/, '')
+
+        xml.xpath('/fingerprints/fingerprint').each do |fprint|
+          @fingerprints << Fingerprint.new(fprint, @match_key, @protocol, filepath)
+        end
+
+        xml = nil
       end
-
-      raise "#{path} is invalid XML: #{xml.errors.join(',')}" unless xml.errors.empty?
-
-      xml.xpath('/fingerprints').each do |fbase|
-        @match_key = fbase['matches'].to_s if fbase['matches']
-        @protocol = fbase['protocol'].to_s if fbase['protocol']
-        @database_type = fbase['database_type'].to_s if fbase['database_type']
-        @preference = fbase['preference'].to_f if fbase['preference']
-      end
-
-      filepath = path.sub(/\.xml$/, '')
-      @match_key ||= File.basename(path).sub(/\.xml$/, '')
-
-      xml.xpath('/fingerprints/fingerprint').each do |fprint|
-        @fingerprints << Fingerprint.new(fprint, @match_key, @protocol, filepath)
-      end
-
-      xml = nil
     end
   end
 end
