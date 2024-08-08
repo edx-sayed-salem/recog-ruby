@@ -43,7 +43,7 @@ module Recog
       @database_type = ''
       @preference = DEFAULT_FP_PREFERENCE.to_f
       # Ensure filenames is an array
-      @paths = Array(filenames).map { |filename| "#{File.dirname(__FILE__)}/../../xml/#{filename}" }
+      @paths = Array(filenames).map { |filename| "#{File.dirname(__FILE__)}/../../recog/xml/#{filename}" }
       @fingerprints = []
 
       parse_fingerprints
